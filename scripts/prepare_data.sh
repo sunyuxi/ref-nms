@@ -1,2 +1,3 @@
-export PYTHONPATH=$PYTHONPATH:$PWD
-python tools/build_vocab.py && python tools/build_refdb.py && python tools/build_ctxdb.py
+python -m tools.build_vocab
+python -m tools.build_refdb
+python -m tools.build_ctxdb

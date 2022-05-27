@@ -7,23 +7,21 @@ from utils.misc import xywh_to_xyxy
 
 
 DATASET_SPLITS = {
-    'refcoco_unc': ['train', 'val', 'testA', 'testB'],
-    'refcoco+_unc': ['train', 'val', 'testA', 'testB'],
-    'refcocog_umd': ['train', 'val', 'test']
+    'rsvg': ['train', 'val', 'test']
 }
 
 
-def build_refdb(dataset, split_by):
+def build_refdb(dataset):
     # Load refer data
-    refer = REFER('data/refer', dataset, split_by)
+    refer = REFER('data/refer', dataset)
     # Load vocab
-    with open('cache/std_vocab_{}_{}.txt'.format(dataset, split_by)) as f:
+    with open('cache/std_vocab_{}.txt'.format(dataset)) as f:
         idx_to_wd = [wd[:-1] for wd in f.readlines()]  # trim off newline
     wd_to_idx = {}
     for idx, wd in enumerate(idx_to_wd):
         wd_to_idx[wd] = idx
     # Build refdb
-    dataset_splitby = '{}_{}'.format(dataset, split_by)
+    dataset_splitby = '{}'.format(dataset)
     data = {'dataset_splitby': dataset_splitby}
     for split in DATASET_SPLITS[dataset_splitby]:
         split_data = []
@@ -43,6 +41,7 @@ def build_refdb(dataset, split_by):
                     'ref_id': ref_id,
                     'image_id': image_id,
                     'bbox': bbox,
+                    'ann_id':ann_id,
                     'tokens': encoded_tokens
                 })
         data[split] = split_data
@@ -65,9 +64,9 @@ def build_refdb(dataset, split_by):
 
 def main():
     print('building refdb...')
-    for dataset, split_by in [('refcoco', 'unc'), ('refcoco+', 'unc'), ('refcocog', 'umd')]:
-        print('building {}_{}...'.format(dataset, split_by))
-        build_refdb(dataset, split_by)
+    dataset = 'rsvg'
+    print('building {}...'.format(dataset))
+    build_refdb(dataset)
     print()
 
 

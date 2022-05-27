@@ -11,10 +11,10 @@ __all__ = ['VanillaPredictor', 'LTRPredictor', 'RNNBCEPredictor', 'AttVanillaPre
 
 def make_resnet_layer4():
     downsample = nn.Sequential(
-        nn.Conv2d(1024, 2048, kernel_size=1, stride=1, bias=False),
+        nn.Conv2d(256, 2048, kernel_size=1, stride=1, bias=False),
         nn.BatchNorm2d(2048)
     )
-    layers = [models.resnet.Bottleneck(1024, 512, 1, downsample)]
+    layers = [models.resnet.Bottleneck(256, 512, 1, downsample)]
     for _ in range(2):
         layers.append(models.resnet.Bottleneck(2048, 512))
     return nn.Sequential(*layers)
@@ -27,8 +27,8 @@ class VanillaPredictor(nn.Module):
         # Head network with pretrained weight
         self.head = make_resnet_layer4()
         # Prediction branch & bbox regression branch from m-rcnn
-        self.cls_score_net = nn.Linear(2048, 81, bias=True)
-        self.bbox_pred_net = nn.Linear(2048, 81*4, bias=True)
+        self.cls_score_net = nn.Linear(2048, 17, bias=True)
+        self.bbox_pred_net = nn.Linear(2048, 17*4, bias=True)
         # Layers of new branch
         self.ref_cls_fc1 = nn.Linear(2048, 300, bias=True)
         self.ref_cls_fc2 = nn.Linear(300, 1, bias=True)
@@ -48,7 +48,7 @@ class VanillaPredictor(nn.Module):
 
         """
         N, R, *_ = roi_feats.shape
-        head_feats = self.head(roi_feats.reshape(N*R, 1024, 7, 7)).reshape(N, R, 2048, 7, 7)
+        head_feats = self.head(roi_feats.reshape(N*R, 256, 7, 7)).reshape(N, R, 2048, 7, 7)
         head_pool = head_feats.mean(dim=(3, 4))         # [N, R, 2048]
         head_mapped = self.ref_cls_fc1(head_pool)       # [N, R, 300]
         head_reshaped = head_mapped.unsqueeze(2)        # [N, R, 1, 300]
@@ -274,7 +274,8 @@ class AttVanillaPredictorV2(nn.Module):
         """
         # Extract visual feature with ResNet Conv-head
         N, R, *_ = roi_feat.shape
-        head_feat = self.head(roi_feat.reshape(N * R, 1024, 7, 7)).reshape(N, R, 2048, 7, 7)
+        #print( ('roi_feat shape', roi_feat.shape), flush=True)
+        head_feat = self.head(roi_feat.reshape(N * R, 256, 7, 7)).reshape(N, R, 2048, 7, 7)
         head_pool = head_feat.mean(dim=(3, 4))  # [N, R, 2048]
         # Extract word feature with RNN
         packed_output, _ = self.rnn(packed_sent_feat)

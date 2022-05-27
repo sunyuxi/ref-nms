@@ -1,6 +1,8 @@
 import argparse
 import pickle
 import json
+import os
+import shutil
 
 from utils.constants import EVAL_SPLITS_DICT, COCO_CAT_NAMES, CAT_NAME_TO_ID
 from lib.refer import REFER
@@ -26,6 +28,8 @@ def threshold_with_confidence(exp_to_proposals, conf):
             else:
                 break
         results[exp_id] = thresh_proposals
+        #if len(thresh_proposals)<2:
+        #    print("warning proposals<2 !")
     return results
 
 
@@ -33,8 +37,8 @@ def main(args):
     # Setup
     assert args.top_N is None or args.conf is None
     assert args.top_N is not None or args.conf is not None
-    dataset_splitby = '{}_{}'.format(args.dataset, args.split_by)
-    refer = REFER('data/refer', dataset=args.dataset, splitBy=args.split_by)
+    dataset_splitby = '{}'.format(args.dataset)
+    refer = REFER('data/refer', dataset=args.dataset)
     det_id = 0
     matt_dets = []
     eval_splits = EVAL_SPLITS_DICT[dataset_splitby]
@@ -44,6 +48,20 @@ def main(args):
     print('loading proposals from {}...'.format(proposal_path))
     with open(proposal_path, 'rb') as f:
         proposal_dict = pickle.load(f)
+    
+    #load detid to category name and id
+    all_det_json_path = 'data/refer/{}/refnms_det_instances_{}.json'.format(dataset_splitby, dataset_splitby)
+    dict_detid2catnameAndID = {}
+    with open(all_det_json_path, 'r') as f:
+        all_det_json_data = json.load(f)
+        for imgname, img_info in all_det_json_data.items():
+            detid_list, catname_list = img_info['det_rbbox_ids'], img_info['det_categories']
+            for idx, detid in enumerate(detid_list):
+                dict_detid2catnameAndID[detid] = catname_list[idx]
+                #print((detid, catname_list[idx]))
+    old_input_det_feats_dir = 'data/refer/{}/hbb_obb_features_refnms_det'.format(dataset_splitby)
+    output_det_feats_dir = 'data/refer/{}/hbb_obb_features_selectedrefnms_det'.format(dataset_splitby)
+    hbb_suffix = 'hbb_det_res50_dota_v1_0_RoITransformer.hdf5'
     for split in eval_splits:
         exp_to_proposals = proposal_dict[split]
         if args.top_N is not None:
@@ -54,11 +72,21 @@ def main(args):
             ref = refer.sentToRef[exp_id]
             ref_id = ref['ref_id']
             image_id = ref['image_id']
+            if image_id == 0:
+                print(('image_id', ref))
             for proposal in proposals:
                 x1, y1, x2, y2 = proposal['box']
                 w, h = x2 - x1, y2 - y1
                 box = (x1, y1, w, h)
-                cat_name = COCO_CAT_NAMES[proposal['cls_idx']]
+                #cat_name = COCO_CAT_NAMES[proposal['cls_idx']]
+                oldproposal_det_box_id = int(proposal['det_box_id'].cpu().numpy())
+                assert oldproposal_det_box_id in dict_detid2catnameAndID
+                cat_name = dict_detid2catnameAndID[oldproposal_det_box_id]
+                old_hbb_det_feats_path = os.path.join(old_input_det_feats_dir, str(oldproposal_det_box_id)+"_"+hbb_suffix)
+                new_hbb_det_feats_path = os.path.join(output_det_feats_dir, str(det_id)+"_"+hbb_suffix)
+                assert os.path.exists(old_hbb_det_feats_path) and (not os.path.exists(new_hbb_det_feats_path))
+                shutil.copyfile(old_hbb_det_feats_path, new_hbb_det_feats_path)
+                
                 det = {
                     'det_id': det_id,
                     'h5_id': det_id,
@@ -92,8 +120,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='refcoco')
-    parser.add_argument('--split-by', type=str, default='unc')
+    parser.add_argument('--dataset', type=str, default='rsvg')
     parser.add_argument('--m', type=str, required=True)
     parser.add_argument('--top-N', type=int, default=None)
     parser.add_argument('--tid', type=str, required=True)

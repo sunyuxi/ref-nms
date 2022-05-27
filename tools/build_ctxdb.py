@@ -32,16 +32,16 @@ def cosine_similarity(feat_a, feat_b):
     return np.sum(feat_a * feat_b) / np.sqrt(np.sum(feat_a * feat_a) * np.sum(feat_b * feat_b))
 
 
-def build_ctxdb(dataset, split_by):
-    dataset_splitby = '{}_{}'.format(dataset, split_by)
+def build_ctxdb(dataset):
+    dataset_splitby = '{}'.format(dataset)
     # Load refer
-    refer = REFER('data/refer', dataset, split_by)
+    refer = REFER('data/refer', dataset)
     # Load GloVe feature
     glove_dict = load_glove_feats()
     # Construct COCO category GloVe feature
     cat_id_to_glove = {}
     for cat_id, cat_name in CAT_ID_TO_NAME.items():
-        cat_id_to_glove[cat_id] = [np.array(glove_dict[t], dtype=np.float32) for t in cat_name.split(' ')]
+        cat_id_to_glove[cat_id] = [np.array(glove_dict[t], dtype=np.float32) for t in cat_name.split('-')]
     # Spacy to extract POS tags
     nlp = spacy.load('en_core_web_sm')
     # Go through the refdb
@@ -55,6 +55,7 @@ def build_ctxdb(dataset, split_by):
             ref = refer.Refs[ref_id]
             image_id = ref['image_id']
             gt_box = xywh_to_xyxy(refer.Anns[ref['ann_id']]['bbox'])
+            gt_boxid = refer.Anns[ref['ann_id']]['id']
             gt_cat = refer.Anns[ref['ann_id']]['category_id']
             for sent in ref['sentences']:
                 sent_num += 1
@@ -75,15 +76,16 @@ def build_ctxdb(dataset, split_by):
                     max_cos_sim = max(cos_sim_list, default=0.)
                     if max_cos_sim > 0.4:
                         ann_box = xywh_to_xyxy(ann['bbox'])
+                        ann_boxid = ann['id']
                         if calculate_iou(ann_box, gt_box) > 0.9:
                             gt_hit = True
                         else:
-                            ctx_list.append({'box': ann_box, 'cat_id': ann['category_id']})
+                            ctx_list.append({'box': ann_box, 'ctx_boxid':ann_boxid, 'cat_id': ann['category_id']})
                 if not gt_hit:
                     gt_miss_num += 1
                 if not ctx_list:
                     empty_num += 1
-                exp_to_ctx[sent_id] = {'gt': {'box': gt_box, 'cat_id': gt_cat}, 'ctx': ctx_list}
+                exp_to_ctx[sent_id] = {'gt': {'box': gt_box, 'gt_boxid':gt_boxid, 'cat_id': gt_cat}, 'ctx': ctx_list}
                 coco_box_num_list.append(len(refer.imgToAnns[image_id]))
                 ctx_box_num_list.append(len(ctx_list) + 1)
         print('GT miss: {} out of {}'.format(gt_miss_num, sent_num))
@@ -100,9 +102,10 @@ def build_ctxdb(dataset, split_by):
 
 def main():
     print('building ctxdb...')
-    for dataset, split_by in [('refcoco', 'unc'), ('refcoco+', 'unc'), ('refcocog', 'umd')]:
-        print('building {}_{}...'.format(dataset, split_by))
-        build_ctxdb(dataset, split_by)
+    dataset = 'rsvg'
+    print('building {}...'.format(dataset))
+    build_ctxdb(dataset)
+    
     print()
 
 

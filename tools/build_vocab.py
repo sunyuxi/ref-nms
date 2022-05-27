@@ -7,8 +7,8 @@ from lib.refer import REFER
 GLOVE_WORD_NUM = 2196017
 GLOVE_FILE = 'data/glove.840B.300d.txt'
 VOCAB_THRESHOLD = 2
-VOCAB_SAVE_PATH = 'cache/std_vocab_{}_{}.txt'
-GLOVE_SAVE_PATH = 'cache/std_glove_{}_{}.npy'
+VOCAB_SAVE_PATH = 'cache/std_vocab_{}.txt'
+GLOVE_SAVE_PATH = 'cache/std_glove_{}.npy'
 
 
 def load_glove_feats():
@@ -25,9 +25,9 @@ def load_glove_feats():
     return glove_dict
 
 
-def build_vocabulary(dataset, split_by, glove_dict):
+def build_vocabulary(dataset, glove_dict):
     # load refer
-    refer = REFER('data/refer', dataset, split_by)
+    refer = REFER('data/refer', dataset)
 
     # filter corpus by frequency and GloVe
     word_count = {}
@@ -66,8 +66,8 @@ def build_vocabulary(dataset, split_by, glove_dict):
     vocab_glove = np.array(vocab_glove, dtype=np.float32)
 
     # save vocab and glove feats
-    vocab_save_path = VOCAB_SAVE_PATH.format(dataset, split_by)
-    glove_save_path = GLOVE_SAVE_PATH.format(dataset, split_by)
+    vocab_save_path = VOCAB_SAVE_PATH.format(dataset)
+    glove_save_path = GLOVE_SAVE_PATH.format(dataset)
     print('saving vacob in {}'.format(vocab_save_path))
     with open(vocab_save_path, 'w') as f:
         for wd in vocab:
@@ -79,9 +79,10 @@ def build_vocabulary(dataset, split_by, glove_dict):
 def main():
     print('building vocab...')
     glove_feats = load_glove_feats()
-    for dataset, split_by in [('refcoco', 'unc'), ('refcoco+', 'unc'), ('refcocog', 'umd')]:
-        print('building {}_{}...'.format(dataset, split_by))
-        build_vocabulary(dataset, split_by, glove_feats)
+    dataset = 'rsvg'
+    print('building {}...'.format(dataset))
+    build_vocabulary(dataset, glove_feats)
+    
     print()
 
 

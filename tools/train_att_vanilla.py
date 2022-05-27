@@ -17,7 +17,7 @@ from lib.predictor import AttVanillaPredictorV2
 from utils.misc import get_time_id
 
 
-PRETRAINED_MRCN = 'data/res101_mask_rcnn_iter_1250000_cpu.pth'
+#PRETRAINED_MRCN = 'data/res101_mask_rcnn_iter_1250000_cpu.pth'
 
 CONFIG = dict(
     ROI_PER_IMG=32,
@@ -28,7 +28,7 @@ CONFIG = dict(
     RNN_LR=5e-4,
     RNN_WD=1e-3,
     BATCH_SIZE=32,
-    EPOCH=5,
+    EPOCH=20,
     ATT_DROPOUT_P=0.5,
     RANK_DROPOUT_P=0.5
 )
@@ -36,7 +36,7 @@ LOG_INTERVAL = 50
 VAL_INTERVAL = 1000
 
 
-def init_att_vanilla_predictor(predictor):
+'''def init_att_vanilla_predictor(predictor):
     # Load pre-trained weights from M-RCNN
     mrcn_weights = torch.load(PRETRAINED_MRCN)
     c4_weights = {
@@ -57,7 +57,7 @@ def init_att_vanilla_predictor(predictor):
         elif 'bias' in name:
             zeros_(param)
             count += 1
-    assert count == 20
+    assert count == 20'''
 
 
 def compute_loss(predictor, criterion, device, enable_grad, roi_feats, roi_labels, word_feats, sent_len):
@@ -72,8 +72,8 @@ def compute_loss(predictor, criterion, device, enable_grad, roi_feats, roi_label
 
 
 def main(args):
-    tid = get_time_id()
-    dataset_splitby = '{}_{}'.format(args.dataset, args.split_by)
+    tid = args.tid
+    dataset_splitby = '{}'.format(args.dataset)
     device = torch.device('cuda', args.gpu_id)
     refdb_path = 'cache/std_refdb_{}.json'.format(dataset_splitby)
     print('loading refdb from {}...'.format(refdb_path))
@@ -84,8 +84,16 @@ def main(args):
     with open(ctxdb_path, 'r') as f:
         ctxdb = json.load(f)
     # Build dataloaders
-    trn_dataset = DetBoxDataset(refdb, ctxdb, split='train', roi_per_img=CONFIG['ROI_PER_IMG'])
-    val_dataset = DetBoxDataset(refdb, ctxdb, split='val', roi_per_img=CONFIG['ROI_PER_IMG'])
+
+    refnmsdet_path = 'data/refer/{}/refnms_det_instances_{}.json'.format(args.dataset, args.dataset)
+    head_feats_dir = 'data/refer/{}/hbb_obb_features_refnms_det'.format(args.dataset)
+    det_file_suffix = 'hbb_det_res50_dota_v1_0_RoITransformer.hdf5'
+
+    trn_dataset = DetBoxDataset(refdb, ctxdb, split='train', roi_per_img=CONFIG['ROI_PER_IMG'], refnmsdet_path=refnmsdet_path, \
+        head_feats_dir=head_feats_dir, det_file_suffix=det_file_suffix)
+    val_dataset = DetBoxDataset(refdb, ctxdb, split='val', roi_per_img=CONFIG['ROI_PER_IMG'], refnmsdet_path=refnmsdet_path, \
+        head_feats_dir=head_feats_dir, det_file_suffix=det_file_suffix)
+
     trn_loader = DataLoader(trn_dataset, batch_size=CONFIG['BATCH_SIZE'], shuffle=True, num_workers=8)
     val_loader = DataLoader(val_dataset, batch_size=CONFIG['BATCH_SIZE'], shuffle=True, num_workers=8)
     # Tensorboard writer
@@ -95,7 +103,6 @@ def main(args):
     # Build and init predictor
     predictor = AttVanillaPredictorV2(att_dropout_p=CONFIG['ATT_DROPOUT_P'],
                                       rank_dropout_p=CONFIG['RANK_DROPOUT_P'])
-    init_att_vanilla_predictor(predictor)
     predictor.to(device)
     # Setup loss
     criterion = nn.BCEWithLogitsLoss(reduction='mean')
@@ -112,7 +119,7 @@ def main(args):
     # Start training
     step = 0
     trn_running_loss = 0.
-    best_model = {'avg_val_loss': float('inf'), 'epoch': None, 'step': None, 'weights': None}
+    best_model = {'avg_val_loss': float('inf'), 'epoch': None, 'step': None, 'weights': None, 'save_path': None}
     tic = time()
     for epoch in range(CONFIG['EPOCH']):
         for trn_batch in trn_loader:
@@ -158,6 +165,13 @@ def main(args):
                     best_model['epoch'] = epoch + 1
                     best_model['step'] = step
                     best_model['weights'] = copy.deepcopy(predictor.state_dict())
+                    save_path = 'output/att_vanilla_{}_b.pth'.format(tid)
+                    best_model['save_path'] = save_path
+                    if os.path.exists(save_path):
+                        os.remove(save_path)
+                    torch.save(predictor.state_dict(), save_path)
+                    print('Saved model weights to {}'.format(best_model['save_path']))
+                    
         # Save checkpoint after each epoch
         epoch_ckpt = {
             'ref_optimizer': ref_optimizer.state_dict(),
@@ -174,9 +188,7 @@ def main(args):
     time_spent = int(time() - tic) // 60
     print('\nTraining completed in {} h {} m.'.format(time_spent // 60, time_spent % 60))
     print('Found model with lowest val loss at epoch {epoch} step {step}.'.format(**best_model))
-    save_path = 'output/att_vanilla_{}_b.pth'.format(tid)
-    torch.save(best_model['weights'], save_path)
-    print('Saved best model weights to {}'.format(save_path))
+    print('Saved best model weights to {}'.format(best_model['save_path']))
     # Close summary writer
     trn_wrt.close()
     val_wrt.close()
@@ -192,7 +204,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', default='refcoco')
-    parser.add_argument('--split-by', default='unc')
+    parser.add_argument('--dataset', default='rsvg')
     parser.add_argument('--gpu-id', type=int, default=0)
+    parser.add_argument('--tid', type=str, default='refnms')
     main(parser.parse_args())
