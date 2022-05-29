@@ -39,7 +39,7 @@ def main(args):
     assert args.top_N is not None or args.conf is not None
     dataset_splitby = '{}'.format(args.dataset)
     refer = REFER('data/refer', dataset=args.dataset)
-    det_id = 0
+    
     matt_dets = []
     eval_splits = EVAL_SPLITS_DICT[dataset_splitby]
 
@@ -50,7 +50,16 @@ def main(args):
         proposal_dict = pickle.load(f)
     
     #load detid to category name and id
-    all_det_json_path = 'data/refer/{}/refnms_det_instances_{}.json'.format(dataset_splitby, dataset_splitby)
+    all_det_json_path = os.path.join('data/refer', args.dataset, args.refnmsdet_jsonpath)
+    old_input_det_feats_dir = os.path.join('data/refer', dataset_splitby, args.old_refnmsdet_dirpath)
+    output_det_feats_dir = os.path.join('data/refer', dataset_splitby, args.new_refnmsdet_dirpath)
+    hbb_suffix = args.refnmsdet_feats_suffix
+    if not os.path.exists(output_det_feats_dir):
+        os.mkdir(output_det_feats_dir)
+    elif len(os.listdir(output_det_feats_dir))>0:
+        print('Dir should be empty! ' + output_det_feats_dir)
+        exit()
+
     dict_detid2catnameAndID = {}
     with open(all_det_json_path, 'r') as f:
         all_det_json_data = json.load(f)
@@ -59,9 +68,9 @@ def main(args):
             for idx, detid in enumerate(detid_list):
                 dict_detid2catnameAndID[detid] = catname_list[idx]
                 #print((detid, catname_list[idx]))
-    old_input_det_feats_dir = 'data/refer/{}/hbb_obb_features_refnms_det'.format(dataset_splitby)
-    output_det_feats_dir = 'data/refer/{}/hbb_obb_features_selectedrefnms_det'.format(dataset_splitby)
-    hbb_suffix = 'hbb_det_res50_dota_v1_0_RoITransformer.hdf5'
+    
+    dict_olddetid2newdetid = {}
+
     for split in eval_splits:
         exp_to_proposals = proposal_dict[split]
         if args.top_N is not None:
@@ -72,8 +81,7 @@ def main(args):
             ref = refer.sentToRef[exp_id]
             ref_id = ref['ref_id']
             image_id = ref['image_id']
-            if image_id == 0:
-                print(('image_id', ref))
+            
             for proposal in proposals:
                 x1, y1, x2, y2 = proposal['box']
                 w, h = x2 - x1, y2 - y1
@@ -81,11 +89,19 @@ def main(args):
                 #cat_name = COCO_CAT_NAMES[proposal['cls_idx']]
                 oldproposal_det_box_id = int(proposal['det_box_id'].cpu().numpy())
                 assert oldproposal_det_box_id in dict_detid2catnameAndID
+                
+                if oldproposal_det_box_id not in dict_olddetid2newdetid:
+                    det_id = len(dict_olddetid2newdetid)
+                    dict_olddetid2newdetid[oldproposal_det_box_id] = det_id
+                    
+                    old_hbb_det_feats_path = os.path.join(old_input_det_feats_dir, str(oldproposal_det_box_id)+"_"+hbb_suffix)
+                    new_hbb_det_feats_path = os.path.join(output_det_feats_dir, str(det_id)+"_"+hbb_suffix)
+                    assert os.path.exists(old_hbb_det_feats_path) and (not os.path.exists(new_hbb_det_feats_path))
+                    shutil.copyfile(old_hbb_det_feats_path, new_hbb_det_feats_path)
+                else:
+                    det_id = dict_olddetid2newdetid[oldproposal_det_box_id]
+                
                 cat_name = dict_detid2catnameAndID[oldproposal_det_box_id]
-                old_hbb_det_feats_path = os.path.join(old_input_det_feats_dir, str(oldproposal_det_box_id)+"_"+hbb_suffix)
-                new_hbb_det_feats_path = os.path.join(output_det_feats_dir, str(det_id)+"_"+hbb_suffix)
-                assert os.path.exists(old_hbb_det_feats_path) and (not os.path.exists(new_hbb_det_feats_path))
-                shutil.copyfile(old_hbb_det_feats_path, new_hbb_det_feats_path)
                 
                 det = {
                     'det_id': det_id,
@@ -102,7 +118,6 @@ def main(args):
                     # 'fin_score': proposal['score']
                 }
                 matt_dets.append(det)
-                det_id += 1
 
     # Print out stats and save detections
     for split in eval_splits:
@@ -125,4 +140,9 @@ if __name__ == '__main__':
     parser.add_argument('--top-N', type=int, default=None)
     parser.add_argument('--tid', type=str, required=True)
     parser.add_argument('--conf', type=float, default=None)
+    parser.add_argument('--refnmsdet_jsonpath', type=str, default='refnms_det_instances_rsvg.json')
+    parser.add_argument('--old_refnmsdet_dirpath', type=str, default='hbb_obb_features_refnms_det')
+    parser.add_argument('--new_refnmsdet_dirpath', type=str, default='hbb_obb_features_selectedrefnms_det')
+    parser.add_argument('--refnmsdet_feats_suffix', type=str, default='hbb_det_res50_dota_v1_0_RoITransformer.hdf5')
+    
     main(parser.parse_args())

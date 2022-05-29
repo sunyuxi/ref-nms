@@ -85,9 +85,13 @@ def main(args):
         ctxdb = json.load(f)
     # Build dataloaders
 
-    refnmsdet_path = 'data/refer/{}/refnms_det_instances_{}.json'.format(args.dataset, args.dataset)
-    head_feats_dir = 'data/refer/{}/hbb_obb_features_refnms_det'.format(args.dataset)
-    det_file_suffix = 'hbb_det_res50_dota_v1_0_RoITransformer.hdf5'
+    #refnmsdet_path = 'data/refer/{}/refnms_det_instances_{}.json'.format(args.dataset, args.dataset)
+    #head_feats_dir = 'data/refer/{}/hbb_obb_features_refnms_det'.format(args.dataset)
+    #det_file_suffix = 'hbb_det_res50_dota_v1_0_RoITransformer.hdf5'
+    
+    refnmsdet_path = os.path.join('data/refer', args.dataset, args.refnmsdet_jsonpath)
+    head_feats_dir = os.path.join('data/refer', args.dataset, args.refnmsdet_dirpath)
+    det_file_suffix = args.refnmsdet_feats_suffix
 
     trn_dataset = DetBoxDataset(refdb, ctxdb, split='train', roi_per_img=CONFIG['ROI_PER_IMG'], refnmsdet_path=refnmsdet_path, \
         head_feats_dir=head_feats_dir, det_file_suffix=det_file_suffix)
@@ -111,11 +115,11 @@ def main(args):
                  + list(predictor.vis_a_fc.parameters()) + list(predictor.vis_r_fc.parameters())
     ref_optimizer = optim.Adam(ref_params, lr=CONFIG['REF_LR'], weight_decay=CONFIG['REF_WD'])
     rnn_optimizer = optim.Adam(predictor.rnn.parameters(), lr=CONFIG['RNN_LR'], weight_decay=CONFIG['RNN_WD'])
-    head_optimizer = optim.Adam(predictor.head.parameters(), lr=CONFIG['HEAD_LR'], weight_decay=CONFIG['HEAD_WD'])
+    #head_optimizer = optim.Adam(predictor.head.parameters(), lr=CONFIG['HEAD_LR'], weight_decay=CONFIG['HEAD_WD'])
     common_args = dict(mode='min', factor=0.5, verbose=True, threshold_mode='rel', patience=1)
     ref_scheduler = optim.lr_scheduler.ReduceLROnPlateau(ref_optimizer, min_lr=CONFIG['REF_LR']/100, **common_args)
     rnn_scheduler = optim.lr_scheduler.ReduceLROnPlateau(rnn_optimizer, min_lr=CONFIG['RNN_LR']/100, **common_args)
-    head_scheduler = optim.lr_scheduler.ReduceLROnPlateau(head_optimizer, min_lr=CONFIG['HEAD_LR']/100, **common_args)
+    #head_scheduler = optim.lr_scheduler.ReduceLROnPlateau(head_optimizer, min_lr=CONFIG['HEAD_LR']/100, **common_args)
     # Start training
     step = 0
     trn_running_loss = 0.
@@ -127,14 +131,15 @@ def main(args):
             step += 1
             predictor.train()
             loss = compute_loss(predictor, criterion, device, True, *trn_batch)
-            head_optimizer.zero_grad()
+            #head_optimizer.zero_grad()
             ref_optimizer.zero_grad()
             rnn_optimizer.zero_grad()
             loss.backward()
-            head_optimizer.step()
+            #head_optimizer.step()
             ref_optimizer.step()
             rnn_optimizer.step()
             trn_running_loss += loss.item()
+    
             # Log training loss
             if step % LOG_INTERVAL == 0:
                 avg_trn_loss = trn_running_loss / LOG_INTERVAL
@@ -156,7 +161,7 @@ def main(args):
                 print('[VAL Loss] epoch {} step {}: {:.6f}'.format(epoch + 1, step, avg_val_loss))
                 val_wrt.add_scalar('loss', avg_val_loss, step)
                 # Update learning rate
-                head_scheduler.step(avg_val_loss)
+                #head_scheduler.step(avg_val_loss)
                 ref_scheduler.step(avg_val_loss)
                 rnn_scheduler.step(avg_val_loss)
                 # Track model with lowest val loss
@@ -176,10 +181,10 @@ def main(args):
         epoch_ckpt = {
             'ref_optimizer': ref_optimizer.state_dict(),
             'rnn_optimizer': rnn_optimizer.state_dict(),
-            'head_optimizer': head_optimizer.state_dict(),
+            #'head_optimizer': head_optimizer.state_dict(),
             'ref_scheduler': ref_scheduler.state_dict(),
             'rnn_scheduler': rnn_scheduler.state_dict(),
-            'head_scheduler': head_scheduler.state_dict(),
+            #'head_scheduler': head_scheduler.state_dict(),
             'model': predictor.state_dict()
         }
         save_path = 'output/att_vanilla_ckpt_{}_{}.pth'.format(tid, epoch + 1)
@@ -207,4 +212,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='rsvg')
     parser.add_argument('--gpu-id', type=int, default=0)
     parser.add_argument('--tid', type=str, default='refnms')
+    parser.add_argument('--refnmsdet_jsonpath', type=str, default='refnms_det_instances_rsvg.json')
+    parser.add_argument('--refnmsdet_dirpath', type=str, default='hbb_obb_features_refnms_det')
+    parser.add_argument('--refnmsdet_feats_suffix', type=str, default='hbb_det_res50_dota_v1_0_RoITransformer.hdf5')
+    
     main(parser.parse_args())

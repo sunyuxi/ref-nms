@@ -2,7 +2,7 @@ import json
 import pickle
 import argparse
 from multiprocessing import Pool
-
+import os
 import torch
 from tqdm import tqdm
 from torchvision.ops import nms
@@ -12,12 +12,12 @@ from lib.predictor import AttVanillaPredictorV2
 from lib.vanilla_utils import DetEvalLoader
 from utils.constants import EVAL_SPLITS_DICT
 
-sub_args = (idx, args.gpu_id, args.tid, refdb_path, split, args.m)
-def rank_proposals(position, gpu_id, tid, refdb_path, split, m):
+def rank_proposals(position, gpu_id, tid, refdb_path, split, m, refnmsdet_jsonpath, refnmsdet_dirpath, refnmsdet_feats_suffix):
     # Load refdb
     with open(refdb_path) as f:
         refdb = json.load(f)
     dataset_ = refdb['dataset_splitby'].split('_')[0]
+    assert dataset_ == 'rsvg'
     # Load pre-trained model
     device = torch.device('cuda', gpu_id)
     with open('output/{}_{}.json'.format(m, tid), 'r') as f:
@@ -34,8 +34,10 @@ def rank_proposals(position, gpu_id, tid, refdb_path, split, m):
     # Rank proposals
     exp_to_proposals = {}
     
-    refnmsdet_path, head_feats_dir = 'data/refer/rsvg/refnms_det_instances_rsvg.json', 'data/refer/rsvg/hbb_obb_features_refnms_det'
-    det_file_suffix = 'hbb_det_res50_dota_v1_0_RoITransformer.hdf5'
+    refnmsdet_path = os.path.join('data/refer', dataset_, refnmsdet_jsonpath)
+    head_feats_dir = os.path.join('data/refer', dataset_, refnmsdet_dirpath)
+    det_file_suffix = refnmsdet_feats_suffix
+
     loader = DetEvalLoader(refdb, split, gpu_id, refnmsdet_path, head_feats_dir, det_file_suffix)
     tqdm_loader = tqdm(loader, desc='scoring {}'.format(split), ascii=True, position=position)
     for exp_id, pos_feat, sent_feat, pos_box, pos_score, pos_ids in tqdm_loader:
@@ -79,7 +81,8 @@ def main(args):
     results = {}
     with Pool(processes=len(eval_splits)) as pool:
         for idx, split in enumerate(eval_splits):
-            sub_args = (idx, args.gpu_id, args.tid, refdb_path, split, args.m)
+            sub_args = (idx, args.gpu_id, args.tid, refdb_path, split, args.m, \
+                args.refnmsdet_jsonpath, args.refnmsdet_dirpath, args.refnmsdet_feats_suffix)
             results[split] = pool.apply_async(rank_proposals, sub_args, error_callback=error_callback)
         pool.close()
         pool.join()
@@ -101,4 +104,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='rsvg')
     parser.add_argument('--tid', type=str, required=True)
     parser.add_argument('--m', type=str, default='att_vanilla')
+    parser.add_argument('--refnmsdet_jsonpath', type=str, default='refnms_det_instances_rsvg.json')
+    parser.add_argument('--refnmsdet_dirpath', type=str, default='hbb_obb_features_refnms_det')
+    parser.add_argument('--refnmsdet_feats_suffix', type=str, default='hbb_det_res50_dota_v1_0_RoITransformer.hdf5')
     main(parser.parse_args())
