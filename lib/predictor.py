@@ -243,15 +243,15 @@ class AttVanillaPredictorV2(nn.Module):
     def __init__(self, att_dropout_p, rank_dropout_p):
         super(AttVanillaPredictorV2, self).__init__()
         # Head network with pretrained weight
-        self.head = make_resnet_layer4()
+        #self.head = make_resnet_layer4()
         # Layers of new branch
         self.vis_a_fc = nn.Sequential(
-            nn.Linear(2048, 1024, bias=True),
+            nn.Linear(256, 1024, bias=True),
             nn.ReLU(inplace=True),
             nn.Linear(1024, 512, bias=True)
         )
         self.vis_r_fc = nn.Sequential(
-            nn.Linear(2048, 1024, bias=True),
+            nn.Linear(256, 1024, bias=True),
             nn.ReLU(inplace=True),
             nn.Linear(1024, 512, bias=True)
         )
@@ -275,7 +275,7 @@ class AttVanillaPredictorV2(nn.Module):
         # Extract visual feature with ResNet Conv-head
         N, R, *_ = roi_feat.shape
         #print( ('roi_feat shape', roi_feat.shape), flush=True)
-        head_feat = self.head(roi_feat.reshape(N * R, 256, 7, 7)).reshape(N, R, 2048, 7, 7)
+        head_feat = roi_feat
         head_pool = head_feat.mean(dim=(3, 4))  # [N, R, 2048]
         # Extract word feature with RNN
         packed_output, _ = self.rnn(packed_sent_feat)
